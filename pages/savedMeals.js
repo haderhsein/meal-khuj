@@ -8,57 +8,62 @@ import Title from '../components/text/Title';
 import { getSingleMeal } from './meals/[id]';
 import classes from './savedMeals.module.scss';
 
+function readSavedMealIds() {
+  try {
+    const storedMeals = JSON.parse(localStorage.getItem('savedMeals') || '[]');
+    return Array.isArray(storedMeals)
+      ? [...new Set(storedMeals.filter((id) => typeof id === 'string' || typeof id === 'number').map(String))]
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function SavedMeals() {
   const [savedMealsId, setSavedMealsId] = useState([]);
 
-  const queries = savedMealsId.map((id) => (
-    {
+  const result = useQueries({
+    queries: savedMealsId.map((id) => ({
       queryKey: ['singleMeal', id],
       queryFn: getSingleMeal,
-    }
-  ));
-
-  const result = useQueries({ queries });
+    })),
+  });
 
   useEffect(() => {
-    if (localStorage.getItem('savedMeals')) {
-      setSavedMealsId(JSON.parse(localStorage.getItem('savedMeals')));
-    }
+    setSavedMealsId(readSavedMealIds());
   }, []);
+
+  const isLoading = result.some((mealQuery) => mealQuery.isLoading);
+  const hasError = result.some((mealQuery) => mealQuery.isError);
+  const savedMeals = result.map((mealQuery) => mealQuery.data).filter(Boolean);
 
   return (
     <div className={classes.pageWrapper}>
       <Title variant="primary" className={classes.pageTitle}>My Saved Meal List</Title>
       <div className={classes.list_container}>
-        {savedMealsId.length <= 0 && <Text>You have no saved meals</Text>}
-        {result && result.map(({ data, isLoading }, index) => {
-          if (isLoading) {
-            return (
-              <BeatLoader key={savedMealsId[[index]]} color="#fff" loading={isLoading} size={20} />
-            );
-          }
-
-          return (
-            <Link href={`/meals/${data.idMeal}`} key={data.idMeal}>
-              <a className={classes.singleMeal}>
-                <Title variant="secondary" className={classes.mealTitle}>{data.strMeal}</Title>
-                <PointText>
-                  Category:
-                  {' '}
-                  {data.strCategory}
-                </PointText>
-                <PointText>
-                  Area:
-                  {' '}
-                  {data.strArea}
-                </PointText>
-              </a>
-            </Link>
-          );
-        })}
+        {savedMealsId.length === 0 && <Text>You have no saved meals</Text>}
+        {savedMealsId.length > 0 && isLoading && <BeatLoader color="#fff" size={20} />}
+        {savedMeals.map((meal) => (
+          <Link href={`/meals/${meal.idMeal}`} key={meal.idMeal}>
+            <a className={classes.singleMeal}>
+              <Title variant="secondary" className={classes.mealTitle}>{meal.strMeal}</Title>
+              <PointText>
+                Category: {meal.strCategory}
+              </PointText>
+              <PointText>
+                Area: {meal.strArea}
+              </PointText>
+            </a>
+          </Link>
+        ))}
+        {savedMealsId.length > 0 && !isLoading && savedMeals.length === 0 && (
+          <Text>Could not load your saved meals. Please try again later.</Text>
+        )}
+        {hasError && savedMeals.length > 0 && (
+          <Text>Some saved meals could not be loaded.</Text>
+        )}
       </div>
     </div>
-
   );
 }
 
