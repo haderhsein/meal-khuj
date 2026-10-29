@@ -15,18 +15,18 @@ const override = {
 };
 
 const getMeals = async ({ queryKey }) => {
-  const { data } = await axios.get(`filter.php?c=${queryKey[1]}`);
+  const { data } = await axios.get(`filter.php?c=${encodeURIComponent(queryKey[1])}`);
   return data?.meals || [];
 };
 
 const getQueriedMeals = async ({ queryKey }) => {
-  const { data } = await axios.get(`search.php?s=${queryKey[1]}`);
+  const { data } = await axios.get(`search.php?s=${encodeURIComponent(queryKey[1])}`);
   return data?.meals || [];
 };
 
 const getCategories = async () => {
   const { data } = await axios.get('/categories.php');
-  return data.categories;
+  return data?.categories || [];
 };
 
 function Meals() {
@@ -35,44 +35,55 @@ function Meals() {
   const [query, setQuery] = useState('');
 
   const {
-    data: categories, isLoading: categoryIsLoading, isError: categoryIsError, error: categoryError,
-  } = useQuery(['catagories'], getCategories);
+    data: categories = [],
+    isLoading: categoryIsLoading,
+    isError: categoryIsError,
+    error: categoryError,
+  } = useQuery(['categories'], getCategories);
 
   const {
-    data: queriedData, isLoading: queryIsLoading, isError: queryError,
+    data: queriedData = [],
+    isLoading: queryIsLoading,
+    isError: queryIsError,
   } = useQuery(['mealsByQuery', query], getQueriedMeals, {
     enabled: query !== '',
   });
 
   const {
-    data, isLoading, isError,
+    data = [],
+    isLoading,
+    isError,
   } = useQuery(['mealsByCategory', selectedCategory], getMeals, {
-    enabled: query === '',
+    enabled: query === '' && selectedCategory !== '',
   });
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      if (searchText) {
-        setQuery(searchText);
+      const normalizedSearch = searchText.trim();
+
+      if (normalizedSearch) {
+        setQuery(normalizedSearch);
         setSelectedCategory('');
       } else {
         setQuery('');
-        if (categories) {
+        if (categories.length > 0) {
           setSelectedCategory(categories[0].strCategory);
         }
       }
     }, 300);
-    return () => {
-      setQuery('');
-      clearTimeout(timeout);
-    };
+
+    return () => clearTimeout(timeout);
   }, [searchText, categories]);
 
   useEffect(() => {
-    if (categories) {
+    if (!searchText.trim() && categories.length > 0 && !selectedCategory) {
       setSelectedCategory(categories[0].strCategory);
     }
-  }, [categories]);
+  }, [categories, searchText, selectedCategory]);
+
+  const isLoadingMeals = query ? queryIsLoading : isLoading;
+  const isErrorMeals = query ? queryIsError : isError;
+  const visibleMeals = query ? queriedData : data;
 
   return (
     <div className={classes.meals__page}>
@@ -80,7 +91,11 @@ function Meals() {
       <PointText className={classes.text}>search meals or select categories from below.</PointText>
 
       <Categories
-        setSelectedCategory={setSelectedCategory}
+        setSelectedCategory={(category) => {
+          setSelectedCategory(category);
+          setSearchText('');
+          setQuery('');
+        }}
         selectedCategory={selectedCategory}
         categories={categories}
         categoryIsLoading={categoryIsLoading}
@@ -89,23 +104,21 @@ function Meals() {
         setQuery={setQuery}
       />
 
-      {isLoading || categoryIsLoading ? (
+      {(isLoadingMeals || categoryIsLoading) && (
         <div className={classes.loadingSpinner}>
-          <BeatLoader color="#fff" loading={isLoading || categoryIsLoading} cssOverride={override} size={20} />
+          <BeatLoader color="#fff" loading={isLoadingMeals || categoryIsLoading} cssOverride={override} size={20} />
         </div>
-      ) : null}
+      )}
 
       <div className={classes.meals__container}>
-        { !isLoading && !isError
-        && data && data.map((meal) => (
+        {!isLoadingMeals && !isErrorMeals && visibleMeals.map((meal) => (
           <SingleMealCard key={meal.idMeal} meal={meal} />
         ))}
-        { !queryIsLoading && !queryError
-        && queriedData && queriedData.map((meal) => (
-          <SingleMealCard key={meal.idMeal} meal={meal} />
-        ))}
-        {data && queriedData && data.length === 0 && queriedData.length === 0 && (
+        {!isLoadingMeals && !isErrorMeals && !categoryIsLoading && visibleMeals.length === 0 && (
           <Text>No meals found</Text>
+        )}
+        {(isErrorMeals || categoryIsError) && (
+          <Text>Unable to load meals right now. Please try again.</Text>
         )}
       </div>
     </div>
